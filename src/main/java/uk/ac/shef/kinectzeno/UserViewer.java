@@ -4,6 +4,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.awt.*;
 import java.awt.image.*;
+import javax.vecmath.*;
 
 import org.openni.*;
 import com.primesense.nite.*;
@@ -16,8 +17,7 @@ import org.robokind.api.motion.Robot.JointId;
 import org.robokind.api.motion.Robot.RobotPositionMap;
 import org.robokind.api.motion.messaging.RemoteRobot;
 import org.robokind.client.basic.Robokind;
-import static org.robokind.client.basic.RobotJoints.LEFT_ELBOW_PITCH;
-import static org.robokind.client.basic.RobotJoints.LEFT_ELBOW_YAW;
+import static org.robokind.client.basic.RobotJoints.LEFT_SHOULDER_PITCH;
 import static org.robokind.client.basic.RobotJoints.LEFT_SHOULDER_ROLL;
 import org.robokind.client.basic.UserSettings;
 
@@ -31,13 +31,13 @@ public class UserViewer extends Component
     BufferedImage mBufferedImage;
     int[] mColors;
     RemoteRobot myRobot;
-    JointId left_elbow_yaw;
-    JointId left_elbow_pitch;
+    JointId left_shoulder_pitch;
     JointId left_shoulder_roll;
     RobotPositionMap myGoalPositions;
     PrintStream out;
     JLabel positionLabel;
     DecimalFormat df;
+    long lastUpdateTime = 0;
     
     public UserViewer(UserTracker tracker, JLabel positionLabel) {
         String robotID = "myRobot";
@@ -49,15 +49,43 @@ public class UserViewer extends Component
         this.positionLabel = positionLabel;
         mTracker.addNewFrameListener(this);
         df = new DecimalFormat("#.##");
-       // myRobot = Robokind.connectRobot();
+        myRobot = Robokind.connectRobot();
         mColors = new int[] { 0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFF00, 0xFFFF00FF, 0xFF00FFFF };
-/*        left_elbow_yaw = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_ELBOW_YAW)); 
-        left_elbow_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_ELBOW_PITCH));
+        left_shoulder_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_SHOULDER_PITCH));
         left_shoulder_roll = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_SHOULDER_ROLL));
         
         myGoalPositions = new org.robokind.api.motion.Robot.RobotPositionHashMap();
-  */
+  
    }
+    Point3f convertPoint(com.primesense.nite.Point3D<Float> p) {
+        Point3f point = new Point3f();
+        point.x = p.getX();
+        point.y = p.getY();
+        point.z = p.getZ();
+        return point;
+    }
+    float findPlaneAngle(Point3f a, Point3f b, Point3f c, Point3f d, Point3f e) {
+        
+       
+        Vector3f vec1 =new Vector3f();
+        vec1.sub(b, a);
+        
+        Vector3f vec2 =new Vector3f();
+       vec2.sub(c,a);
+        
+        Vector3f vec3 =new Vector3f();
+        vec3.sub(e,d);
+        
+        Vector3f normal = new Vector3f();
+        normal.cross(vec1, vec2);
+        
+        float angle = vec3.angle(normal);
+        
+        return angle;
+        
+    }
+    
+    
     
     public synchronized void paint(Graphics g) {
         if (mLastFrame == null) {
@@ -85,8 +113,12 @@ public class UserViewer extends Component
 	        g.drawImage(mBufferedImage, framePosX, framePosY, null);
         }
         
+    	
+         
         for (UserData user : mLastFrame.getUsers()) {
         	if (user.getSkeleton().getState() == SkeletonState.TRACKED) {
+                    
+                    
         		drawLimb(g, framePosX, framePosY, user, JointType.HEAD, JointType.NECK);
         		
         		drawLimb(g, framePosX, framePosY, user, JointType.LEFT_SHOULDER, JointType.LEFT_ELBOW);
@@ -111,36 +143,66 @@ public class UserViewer extends Component
 
         		drawLimb(g, framePosX, framePosY, user, JointType.RIGHT_HIP, JointType.RIGHT_KNEE);
         		drawLimb(g, framePosX, framePosY, user, JointType.RIGHT_KNEE, JointType.RIGHT_FOOT);
-        	}
+                        
+                        
+                        if (timeSinceLastUpdate()>50) {
+                            moveRobot();
+                        }
+                    
+                    
+                }
         }
     }
 
+    private long timeSinceLastUpdate() {
+        long currentTime = System.currentTimeMillis();
+        return currentTime - lastUpdateTime;
+    }
+    private void setPosition(org.robokind.api.motion.Robot.JointId jointID, float val) {
+      if (val<0) val=0.0f;
+      if (val>1) val=1.0f;
+      myGoalPositions.put(jointID, new NormalizedDouble(val)); 
+    }
+    private void moveRobot() {
+        
+        UserData user = mLastFrame.getUsers().get(0);
+        if (user.getSkeleton().getState() == SkeletonState.TRACKED) {
+            Point3f leftShoulder = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_SHOULDER).getPosition());
+            Point3f rightShoulder = convertPoint(user.getSkeleton().getJoint(JointType.RIGHT_SHOULDER).getPosition());
+            Point3f torso = convertPoint(user.getSkeleton().getJoint(JointType.TORSO).getPosition());
+            Point3f leftElbow = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_ELBOW).getPosition());
+            Point3f neck = convertPoint(user.getSkeleton().getJoint(JointType.NECK).getPosition());
+            Point3f origin = new Point3f();
+            float leftShoulderPitch = findPlaneAngle(leftShoulder, rightShoulder, torso, leftShoulder, leftElbow);
+            if (leftElbow.y > leftShoulder.y) {
+                leftShoulderPitch = (float)Math.PI/2 - leftShoulderPitch;
+            }
+            float leftShoulderRoll = findPlaneAngle(neck, torso, origin, leftShoulder, leftElbow);
+                    
+            float normPitch = (2.3f-leftShoulderPitch)/2.6f;
+          float normRoll = (leftShoulderRoll-1.7f)/1.5f;
+         positionLabel.setText("pitch = "+df.format(normPitch) + " roll = "+df.format(normRoll));
+         setPosition(left_shoulder_pitch, normPitch);
+         setPosition(left_shoulder_roll, normRoll);
+        }
+        myRobot.move(myGoalPositions, 50);
+        lastUpdateTime = System.currentTimeMillis();
+    }
+    
     private void drawLimb(Graphics g, int x, int y, UserData user, JointType from, JointType to) {
     	com.primesense.nite.SkeletonJoint fromJoint = user.getSkeleton().getJoint(from);
     	com.primesense.nite.SkeletonJoint toJoint = user.getSkeleton().getJoint(to);
     	
-        if (fromJoint.getPositionConfidence() == 0.0 || toJoint.getPositionConfidence() == 0.0) {
+        /*if (fromJoint.getPositionConfidence() == 0.0 || toJoint.getPositionConfidence() == 0.0) {
             return;
-    	}
+    	}*/
     	
       
     	
     	com.primesense.nite.Point2D<Float> fromPos = mTracker.convertJointCoordinatesToDepth(fromJoint.getPosition());
     	com.primesense.nite.Point2D<Float> toPos = mTracker.convertJointCoordinatesToDepth(toJoint.getPosition());
 
-        if (from==JointType.LEFT_SHOULDER && to==JointType.LEFT_ELBOW) {
-           float dx = toJoint.getPosition().getX() - fromJoint.getPosition().getX();
-           float dy = toJoint.getPosition().getY() - fromJoint.getPosition().getY();
-           float dz = toJoint.getPosition().getZ() - fromJoint.getPosition().getZ();
-           
-           
-           
-           //String text = "dx "+df.format(dx);
-           //text += "dy "+df.format(dy);
-           //text += "dz "+df.format(dz);
-           
-           //positionLabel.setText(text);
-        }
+       
     	
         
     	// draw it in another color than the use color
