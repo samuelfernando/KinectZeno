@@ -19,6 +19,11 @@ import org.robokind.api.motion.messaging.RemoteRobot;
 import org.robokind.client.basic.Robokind;
 import static org.robokind.client.basic.RobotJoints.LEFT_SHOULDER_PITCH;
 import static org.robokind.client.basic.RobotJoints.LEFT_SHOULDER_ROLL;
+import static org.robokind.client.basic.RobotJoints.LEFT_ELBOW_PITCH;
+import static org.robokind.client.basic.RobotJoints.RIGHT_SHOULDER_PITCH;
+import static org.robokind.client.basic.RobotJoints.RIGHT_SHOULDER_ROLL;
+import static org.robokind.client.basic.RobotJoints.RIGHT_ELBOW_PITCH;
+
 import org.robokind.client.basic.UserSettings;
 
 public class UserViewer extends Component 
@@ -33,6 +38,10 @@ public class UserViewer extends Component
     RemoteRobot myRobot;
     JointId left_shoulder_pitch;
     JointId left_shoulder_roll;
+    JointId left_elbow_pitch;
+    JointId right_shoulder_pitch;
+    JointId right_shoulder_roll;
+    JointId right_elbow_pitch;
     RobotPositionMap myGoalPositions;
     PrintStream out;
     JLabel positionLabel;
@@ -52,7 +61,11 @@ public class UserViewer extends Component
         myRobot = Robokind.connectRobot();
         mColors = new int[] { 0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFF00, 0xFFFF00FF, 0xFF00FFFF };
         left_shoulder_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_SHOULDER_PITCH));
+        left_elbow_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_ELBOW_PITCH));        
         left_shoulder_roll = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_SHOULDER_ROLL));
+        right_shoulder_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_SHOULDER_PITCH));        
+        right_elbow_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_ELBOW_PITCH));        
+        right_shoulder_roll = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_SHOULDER_ROLL));
         
         myGoalPositions = new org.robokind.api.motion.Robot.RobotPositionHashMap();
   
@@ -64,7 +77,7 @@ public class UserViewer extends Component
         point.z = p.getZ();
         return point;
     }
-    float findPlaneAngle(Point3f a, Point3f b, Point3f c, Point3f d, Point3f e) {
+    float planeAngle(Point3f a, Point3f b, Point3f c, Point3f d, Point3f e) {
         
        
         Vector3f vec1 =new Vector3f();
@@ -82,6 +95,18 @@ public class UserViewer extends Component
         float angle = vec3.angle(normal);
         
         return angle;
+        
+    }
+    
+    float vectorAngle(Point3f a, Point3f b, Point3f c) {
+        Vector3f vec1 =new Vector3f();
+        vec1.sub(b, a);
+        
+        Vector3f vec2 =new Vector3f();
+       vec2.sub(c,a);
+        
+       float angle = vec1.angle(vec2);
+       return angle;
         
     }
     
@@ -171,19 +196,47 @@ public class UserViewer extends Component
             Point3f rightShoulder = convertPoint(user.getSkeleton().getJoint(JointType.RIGHT_SHOULDER).getPosition());
             Point3f torso = convertPoint(user.getSkeleton().getJoint(JointType.TORSO).getPosition());
             Point3f leftElbow = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_ELBOW).getPosition());
+            Point3f rightElbow = convertPoint(user.getSkeleton().getJoint(JointType.RIGHT_ELBOW).getPosition());
+             Point3f leftHand = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_HAND).getPosition());
             Point3f neck = convertPoint(user.getSkeleton().getJoint(JointType.NECK).getPosition());
+            Point3f rightHand = convertPoint(user.getSkeleton().getJoint(JointType.RIGHT_HAND).getPosition());
             Point3f origin = new Point3f();
-            float leftShoulderPitch = findPlaneAngle(leftShoulder, rightShoulder, torso, leftShoulder, leftElbow);
+            float leftShoulderPitch = planeAngle(leftShoulder, rightShoulder, torso, leftShoulder, leftElbow);
             if (leftElbow.y > leftShoulder.y) {
                 leftShoulderPitch = (float)Math.PI/2 - leftShoulderPitch;
             }
-            float leftShoulderRoll = findPlaneAngle(neck, torso, origin, leftShoulder, leftElbow);
+            float leftShoulderRoll = planeAngle(neck, torso, origin, leftShoulder, leftElbow);
                     
             float normPitch = (2.3f-leftShoulderPitch)/2.6f;
-          float normRoll = (leftShoulderRoll-1.7f)/1.5f;
-         positionLabel.setText("pitch = "+df.format(normPitch) + " roll = "+df.format(normRoll));
-         setPosition(left_shoulder_pitch, normPitch);
-         setPosition(left_shoulder_roll, normRoll);
+            float normRoll = (leftShoulderRoll-1.7f)/1.5f;
+         
+            setPosition(left_shoulder_pitch, normPitch);
+            setPosition(left_shoulder_roll, normRoll);
+            
+            float leftElbowPitch = vectorAngle(leftElbow, leftShoulder, leftHand);
+            
+            normPitch = (float)(3 - leftElbowPitch) / (float)(Math.PI/2);
+            setPosition(left_elbow_pitch, normPitch);
+            
+            float rightShoulderPitch = planeAngle(leftShoulder, rightShoulder, torso, rightShoulder, rightElbow);
+            if (rightElbow.y > rightShoulder.y) {
+                rightShoulderPitch = (float)Math.PI/2 - rightShoulderPitch;
+            }
+            
+            normPitch = (2.3f-rightShoulderPitch)/2.6f;
+            setPosition(right_shoulder_pitch, normPitch);
+            float rightShoulderRoll = planeAngle(neck, torso, origin, rightShoulder, rightElbow);
+            normRoll = (1.5f - rightShoulderRoll)/1.5f;
+            setPosition(right_shoulder_roll, normRoll);
+            
+            
+            float rightElbowPitch = vectorAngle(rightElbow, rightShoulder, rightHand);
+            
+            normPitch = (float)(3 - rightElbowPitch) / (float)(Math.PI/2);
+            setPosition(right_elbow_pitch, normPitch);
+            
+            positionLabel.setText("roll = "+df.format(normPitch));
+            
         }
         myRobot.move(myGoalPositions, 50);
         lastUpdateTime = System.currentTimeMillis();
