@@ -20,6 +20,8 @@ import org.robokind.client.basic.Robokind;
 import static org.robokind.client.basic.RobotJoints.LEFT_SHOULDER_PITCH;
 import static org.robokind.client.basic.RobotJoints.LEFT_SHOULDER_ROLL;
 import static org.robokind.client.basic.RobotJoints.LEFT_ELBOW_PITCH;
+import static org.robokind.client.basic.RobotJoints.LEFT_ELBOW_YAW;
+import static org.robokind.client.basic.RobotJoints.RIGHT_ELBOW_YAW;
 import static org.robokind.client.basic.RobotJoints.RIGHT_SHOULDER_PITCH;
 import static org.robokind.client.basic.RobotJoints.RIGHT_SHOULDER_ROLL;
 import static org.robokind.client.basic.RobotJoints.RIGHT_ELBOW_PITCH;
@@ -39,6 +41,8 @@ public class UserViewer extends Component
     JointId left_shoulder_pitch;
     JointId left_shoulder_roll;
     JointId left_elbow_pitch;
+    JointId right_elbow_yaw;
+    JointId left_elbow_yaw;
     JointId right_shoulder_pitch;
     JointId right_shoulder_roll;
     JointId right_elbow_pitch;
@@ -50,7 +54,9 @@ public class UserViewer extends Component
     
     public UserViewer(UserTracker tracker, JLabel positionLabel) {
         String robotID = "myRobot";
-        String robotIP = "192.168.0.54";
+        //String robotIP = "192.168.0.54";
+        String robotIP = "143.167.145.225";
+        
         // set respective addresses
         UserSettings.setRobotId(robotID);
         UserSettings.setRobotAddress(robotIP);
@@ -66,9 +72,11 @@ public class UserViewer extends Component
         right_shoulder_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_SHOULDER_PITCH));        
         right_elbow_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_ELBOW_PITCH));        
         right_shoulder_roll = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_SHOULDER_ROLL));
+       left_elbow_yaw = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_ELBOW_YAW));        
+       right_elbow_yaw = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_ELBOW_YAW));        
         
         myGoalPositions = new org.robokind.api.motion.Robot.RobotPositionHashMap();
-  
+        
    }
     Point3f convertPoint(com.primesense.nite.Point3D<Float> p) {
         Point3f point = new Point3f();
@@ -110,7 +118,18 @@ public class UserViewer extends Component
         
     }
     
-    
+    float quatToAngle(Quaternion q) {
+        Quat4f qv = new Quat4f();
+        qv.x = q.getX();
+        qv.y = q.getY();
+        qv.w = q.getW();
+        qv.z = q.getZ();
+        AxisAngle4f a = new AxisAngle4f();
+        a.set(qv);
+        
+        
+        return a.angle;
+    }
     
     public synchronized void paint(Graphics g) {
         if (mLastFrame == null) {
@@ -170,8 +189,14 @@ public class UserViewer extends Component
         		drawLimb(g, framePosX, framePosY, user, JointType.RIGHT_KNEE, JointType.RIGHT_FOOT);
                         
                         
-                        if (timeSinceLastUpdate()>50) {
+                        if (timeSinceLastUpdate()>200) {
                             moveRobot();
+                            Quaternion leftElbowOrientation = user.getSkeleton().getJoint(JointType.LEFT_ELBOW).getOrientation();
+                            float angle = quatToAngle(leftElbowOrientation);
+                            
+            
+            float normAngle = angle/4.0f;
+                            positionLabel.setText("angle = "+normAngle);
                         }
                     
                     
@@ -234,11 +259,20 @@ public class UserViewer extends Component
             
             normPitch = (float)(3 - rightElbowPitch) / (float)(Math.PI/2);
             setPosition(right_elbow_pitch, normPitch);
+            Quaternion leftElbowOrientation = user.getSkeleton().getJoint(JointType.LEFT_ELBOW).getOrientation();
+            float angle = quatToAngle(leftElbowOrientation);
             
-            positionLabel.setText("roll = "+df.format(normPitch));
+            float normAngle = 1-angle/4.0f;
+            setPosition(left_elbow_yaw, normAngle);
+            
+             Quaternion rightElbowOrientation = user.getSkeleton().getJoint(JointType.RIGHT_ELBOW).getOrientation();
+            angle = quatToAngle(rightElbowOrientation);
+            
+            normAngle = 1-angle/4.0f;
+            setPosition(right_elbow_yaw, normAngle);
             
         }
-        myRobot.move(myGoalPositions, 50);
+        myRobot.move(myGoalPositions, 200);
         lastUpdateTime = System.currentTimeMillis();
     }
     
