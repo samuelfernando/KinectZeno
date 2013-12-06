@@ -8,6 +8,8 @@ import javax.vecmath.*;
 
 import org.openni.*;
 import com.primesense.nite.*;
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.PrintStream;
 import java.text.DecimalFormat;
 import javax.swing.JLabel;
@@ -55,7 +57,9 @@ public class UserViewer extends Component
     public UserViewer(UserTracker tracker, JLabel positionLabel) {
         String robotID = "myRobot";
         //String robotIP = "192.168.0.54";
-        String robotIP = "143.167.145.225";
+        try {
+         BufferedReader br = new BufferedReader(new FileReader("C:\\Users\\zeno\\Documents\\NetBeansProjects\\zeno-ip.txt"));
+         String robotIP = br.readLine();
         
         // set respective addresses
         UserSettings.setRobotId(robotID);
@@ -76,6 +80,10 @@ public class UserViewer extends Component
        right_elbow_yaw = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_ELBOW_YAW));        
         
         myGoalPositions = new org.robokind.api.motion.Robot.RobotPositionHashMap();
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
         
    }
     Point3f convertPoint(com.primesense.nite.Point3D<Float> p) {
@@ -191,12 +199,15 @@ public class UserViewer extends Component
                         
                         if (timeSinceLastUpdate()>200) {
                             moveRobot();
-                            Quaternion leftElbowOrientation = user.getSkeleton().getJoint(JointType.LEFT_ELBOW).getOrientation();
-                            float angle = quatToAngle(leftElbowOrientation);
-                            
-            
-            float normAngle = angle/4.0f;
-                            positionLabel.setText("angle = "+normAngle);
+                             Point3f leftShoulder = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_SHOULDER).getPosition());
+                            Point3f rightShoulder = convertPoint(user.getSkeleton().getJoint(JointType.RIGHT_SHOULDER).getPosition());
+                            Point3f torso = convertPoint(user.getSkeleton().getJoint(JointType.TORSO).getPosition());
+                            Point3f leftHip = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_HIP).getPosition());
+                            Point3f leftKnee = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_KNEE).getPosition());
+                           
+                            float leftHipPitch = planeAngle(leftShoulder, rightShoulder, torso, leftHip, leftKnee);
+
+                            positionLabel.setText("left = "+leftHipPitch);
                         }
                     
                     
@@ -262,12 +273,18 @@ public class UserViewer extends Component
             Quaternion leftElbowOrientation = user.getSkeleton().getJoint(JointType.LEFT_ELBOW).getOrientation();
             float angle = quatToAngle(leftElbowOrientation);
             
+            if (angle>Math.PI) {
+                 angle = (float)(2 * Math.PI - angle);
+             }
             float normAngle = 1-angle/4.0f;
+            
             setPosition(left_elbow_yaw, normAngle);
             
              Quaternion rightElbowOrientation = user.getSkeleton().getJoint(JointType.RIGHT_ELBOW).getOrientation();
             angle = quatToAngle(rightElbowOrientation);
-            
+               if (angle>Math.PI) {
+                 angle = (float)(2 * Math.PI - angle);
+             }
             normAngle = 1-angle/4.0f;
             setPosition(right_elbow_yaw, normAngle);
             
