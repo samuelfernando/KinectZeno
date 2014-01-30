@@ -12,12 +12,16 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.PrintStream;
 import java.text.DecimalFormat;
+import java.util.HashSet;
 import javax.swing.JLabel;
+import org.robokind.api.animation.Animation;
+import org.robokind.api.animation.messaging.RemoteAnimationPlayerClient;
 import org.robokind.api.common.position.NormalizedDouble;
 import org.robokind.api.motion.Joint;
 import org.robokind.api.motion.Robot.JointId;
 import org.robokind.api.motion.Robot.RobotPositionMap;
 import org.robokind.api.motion.messaging.RemoteRobot;
+import org.robokind.api.speech.messaging.RemoteSpeechServiceClient;
 import org.robokind.client.basic.Robokind;
 import static org.robokind.client.basic.RobotJoints.LEFT_SHOULDER_PITCH;
 import static org.robokind.client.basic.RobotJoints.LEFT_SHOULDER_ROLL;
@@ -27,6 +31,14 @@ import static org.robokind.client.basic.RobotJoints.RIGHT_ELBOW_YAW;
 import static org.robokind.client.basic.RobotJoints.RIGHT_SHOULDER_PITCH;
 import static org.robokind.client.basic.RobotJoints.RIGHT_SHOULDER_ROLL;
 import static org.robokind.client.basic.RobotJoints.RIGHT_ELBOW_PITCH;
+import static org.robokind.client.basic.RobotJoints.NECK_YAW;
+import static org.robokind.client.basic.RobotJoints.NECK_PITCH;
+import static org.robokind.client.basic.RobotJoints.LEFT_SMILE;
+import static org.robokind.client.basic.RobotJoints.RIGHT_SMILE;
+import static org.robokind.client.basic.RobotJoints.BROWS;
+import static org.robokind.client.basic.RobotJoints.EYELIDS;
+import static org.robokind.client.basic.RobotJoints.NECK_ROLL;
+
 
 import org.robokind.client.basic.UserSettings;
 
@@ -48,12 +60,25 @@ public class UserViewer extends Component
     JointId right_shoulder_pitch;
     JointId right_shoulder_roll;
     JointId right_elbow_pitch;
+    JointId neck_yaw;
+     JointId neck_pitch;
+     JointId neck_roll;
+     JointId smile_left;
+     JointId smile_right;
+     JointId brows;
+     JointId eyelids;
+private static RemoteAnimationPlayerClient myPlayer;
     RobotPositionMap myGoalPositions;
     PrintStream out;
     JLabel positionLabel;
     DecimalFormat df;
     long lastUpdateTime = 0;
-    
+    long lastSpeak = 0;
+    Skeleton lastSkeleton;
+    float speed;
+  float neck_vel = 0;
+  HashSet<JointType> moveSet;
+    private static RemoteSpeechServiceClient mySpeaker;
     public UserViewer(UserTracker tracker, JLabel positionLabel) {
         String robotID = "myRobot";
         //String robotIP = "192.168.0.54";
@@ -64,13 +89,25 @@ public class UserViewer extends Component
         // set respective addresses
         UserSettings.setRobotId(robotID);
         UserSettings.setRobotAddress(robotIP);
+         UserSettings.setSpeechAddress(robotIP);
+         UserSettings.setAnimationAddress(robotIP);
     	mTracker = tracker;
         this.positionLabel = positionLabel;
         mTracker.addNewFrameListener(this);
         df = new DecimalFormat("#.##");
-        myRobot = Robokind.connectRobot();
         mColors = new int[] { 0xFFFF0000, 0xFF00FF00, 0xFF0000FF, 0xFFFFFF00, 0xFFFF00FF, 0xFF00FFFF };
+         mySpeaker = Robokind.connectSpeechService();
+        myRobot = Robokind.connectRobot();
+        myPlayer = Robokind.connectAnimationPlayer();
+       
         left_shoulder_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_SHOULDER_PITCH));
+        neck_yaw = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(NECK_YAW));
+         neck_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(NECK_PITCH));
+         smile_left = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_SMILE));        
+       smile_right = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_SMILE));        
+      brows = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(BROWS));        
+      eyelids = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(EYELIDS));        
+     
         left_elbow_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_ELBOW_PITCH));        
         left_shoulder_roll = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_SHOULDER_ROLL));
         right_shoulder_pitch = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_SHOULDER_PITCH));        
@@ -78,9 +115,25 @@ public class UserViewer extends Component
         right_shoulder_roll = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_SHOULDER_ROLL));
        left_elbow_yaw = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(LEFT_ELBOW_YAW));        
        right_elbow_yaw = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(RIGHT_ELBOW_YAW));        
-        
+          neck_roll = new org.robokind.api.motion.Robot.JointId(myRobot.getRobotId(), new Joint.Id(NECK_ROLL));        
+      
+       lastSkeleton = null;
         myGoalPositions = new org.robokind.api.motion.Robot.RobotPositionHashMap();
-        }
+          myGoalPositions = myRobot.getDefaultPositions();
+           myRobot.move(myGoalPositions, 1000);
+           //setPosition(right_shoulder_pitch, 0.5f);
+           // setPosition(left_shoulder_pitch, 0.5f);
+        //myRobot.move(myGoalPositions, 1000);
+        speed = 0.0f;
+        moveSet = new HashSet<JointType>();
+        moveSet.add(JointType.LEFT_ELBOW);
+        moveSet.add(JointType.LEFT_HAND); 
+        moveSet.add(JointType.LEFT_SHOULDER);
+        moveSet.add(JointType.RIGHT_ELBOW);
+        moveSet.add(JointType.RIGHT_HAND);
+        moveSet.add(JointType.RIGHT_SHOULDER);
+        
+         }
         catch (Exception e) {
             e.printStackTrace();
         }
@@ -170,7 +223,7 @@ public class UserViewer extends Component
         for (UserData user : mLastFrame.getUsers()) {
         	if (user.getSkeleton().getState() == SkeletonState.TRACKED) {
                     
-                    
+          
         		drawLimb(g, framePosX, framePosY, user, JointType.HEAD, JointType.NECK);
         		
         		drawLimb(g, framePosX, framePosY, user, JointType.LEFT_SHOULDER, JointType.LEFT_ELBOW);
@@ -196,10 +249,10 @@ public class UserViewer extends Component
         		drawLimb(g, framePosX, framePosY, user, JointType.RIGHT_HIP, JointType.RIGHT_KNEE);
         		drawLimb(g, framePosX, framePosY, user, JointType.RIGHT_KNEE, JointType.RIGHT_FOOT);
                         
-                        
-                        if (timeSinceLastUpdate()>200) {
-                            moveRobot();
-                             Point3f leftShoulder = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_SHOULDER).getPosition());
+                        long timelapse = timeSinceLastUpdate();
+                        if (timelapse>200) {
+                            //moveRobot();
+                            /* Point3f leftShoulder = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_SHOULDER).getPosition());
                             Point3f rightShoulder = convertPoint(user.getSkeleton().getJoint(JointType.RIGHT_SHOULDER).getPosition());
                             Point3f torso = convertPoint(user.getSkeleton().getJoint(JointType.TORSO).getPosition());
                             Point3f leftHip = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_HIP).getPosition());
@@ -208,6 +261,73 @@ public class UserViewer extends Component
                             float leftHipPitch = planeAngle(leftShoulder, rightShoulder, torso, leftHip, leftKnee);
 
                             positionLabel.setText("left = "+leftHipPitch);
+                        
+                        */ 
+                            
+                           /* Point3f head = convertPoint(user.getSkeleton().getJoint(JointType.HEAD).getPosition());
+                            //float dist = head.distance(lastPos);
+                            
+                            Point3f zeno_head = new Point3f(0,-400,0);
+                            Point3f zeno_level = new Point3f(100,-400,0);
+                            Point3f zeno_level2 = new Point3f(0,-400,100);
+
+                            Point3f orig = new Point3f(0,0,0);
+                            
+                            Point3f center_head = new Point3f(0,270,2100);
+                            Point3f center_feet = new Point3f(0,-270,2100);
+                            */
+                            //float angle = planeAngle(orig, center_head, center_feet, orig, head);
+                            //angle = 0.5f+(float)Math.cos(angle)*0.7f;
+                            //angle -= Math.PI/2;
+                            //angle = 0.5f-angle;
+                            
+                            
+                            //float angle = planeAngle(zeno_head, zeno_level, zeno_level2, zeno_head, head);
+                            
+                            //angle=0.7f-(float)Math.cos(angle);
+                            //positionLabel.setText("dist "+dist);
+                            float armDist = findDist(user, true);
+                            float dist = findDist(user, false);
+                            lastSkeleton = user.getSkeleton();
+                            
+                            /*if (speed>0.1) {
+                                 moveArms();
+                           
+                                trackHead();
+                               myRobot.move(myGoalPositions, 200);
+                                lastUpdateTime = System.currentTimeMillis();
+
+                            }
+                            else {
+                                moveQuizzical();
+                            }*/
+    
+                            //int spText = 70+(int)((speed-0.5)*100);
+                            float armSpeed = armDist / timelapse;
+                            speed = dist/timelapse;
+                            boolean needMove = false;
+                            //if (armSpeed>0.7) {
+                                moveArms();
+                              //  needMove = true;
+                            //}
+                            //if (speed>2) {
+                                trackHead();
+                              //  needMove = true;
+                            //}
+                            //if (needMove) {
+                               myRobot.move(myGoalPositions, 200);
+                            //}
+                            //else {
+                                //setPosition(smile_left, 0.5f);
+                                //setPosition(smile_right, 0.5f);
+                                //moveQuizzical();
+                                //myRobot.move(myGoalPositions, 200);
+                            //}
+                            
+                            
+                            lastUpdateTime = System.currentTimeMillis();
+                            positionLabel.setText("speed "+df.format(speed)+" armSpeed "+df.format(armSpeed));
+                           
                         }
                     
                     
@@ -215,17 +335,58 @@ public class UserViewer extends Component
         }
     }
 
+    private float findDist(UserData user, boolean armsOnly) {
+        Skeleton skeleton = user.getSkeleton();
+
+        if (lastSkeleton==null) {
+            lastSkeleton = skeleton;
+            return 1000.0f;
+        }
+        SkeletonJoint[] joints = skeleton.getJoints();
+        float total=0.0f;
+        for (SkeletonJoint joint : joints) {
+            JointType type = joint.getJointType();
+            SkeletonJoint lastJoint = lastSkeleton.getJoint(type);
+            Point3f lastPos = convertPoint(lastJoint.getPosition());
+            Point3f curPos = convertPoint(joint.getPosition());
+            float dist = lastPos.distance(curPos);
+            if (armsOnly) {
+                if (moveSet.contains(type)) {        
+                    total+=dist;
+                }
+            }
+            else {
+                total+=dist;
+            }
+        }
+        
+        
+        return total;
+    }
     private long timeSinceLastUpdate() {
         long currentTime = System.currentTimeMillis();
         return currentTime - lastUpdateTime;
+    }
+     private long timeSinceLastSpeak() {
+        long currentTime = System.currentTimeMillis();
+        return currentTime - lastSpeak;
     }
     private void setPosition(org.robokind.api.motion.Robot.JointId jointID, float val) {
       if (val<0) val=0.0f;
       if (val>1) val=1.0f;
       myGoalPositions.put(jointID, new NormalizedDouble(val)); 
     }
-    private void moveRobot() {
-        
+    
+     
+
+    private void moveQuizzical() {
+        Animation anim = Robokind.loadAnimation("animations/neck_roll.xml");
+       // AnimationJob introJob = myPlayer.playAnimation(introAnim);
+        myPlayer.playAnimation(anim);
+    
+    }
+    
+    private void moveArms() {
         UserData user = mLastFrame.getUsers().get(0);
         if (user.getSkeleton().getState() == SkeletonState.TRACKED) {
             Point3f leftShoulder = convertPoint(user.getSkeleton().getJoint(JointType.LEFT_SHOULDER).getPosition());
@@ -289,8 +450,73 @@ public class UserViewer extends Component
             setPosition(right_elbow_yaw, normAngle);
             
         }
-        myRobot.move(myGoalPositions, 200);
-        lastUpdateTime = System.currentTimeMillis();
+    }
+    
+    private void trackHead() {
+        
+        UserData user = mLastFrame.getUsers().get(0);
+        if (user.getSkeleton().getState() == SkeletonState.TRACKED) {
+            
+
+            Point3f head = convertPoint(user.getSkeleton().getJoint(JointType.HEAD).getPosition());
+                           
+            Point3f orig = new Point3f(0,0,0);
+                            
+            Point3f center_head = new Point3f(0,270,2100);
+            Point3f center_feet = new Point3f(0,-270,2100);
+                            
+           float angle = planeAngle(orig, center_head, center_feet, orig, head);
+            angle = (float)Math.cos(angle)*0.7f+0.6f;
+             setPosition(neck_yaw, angle);
+            Point3f zeno_head = new Point3f(0,-400,0);
+            Point3f zeno_level = new Point3f(100,-400,0);
+            Point3f zeno_level2 = new Point3f(0,-400,100);
+
+            angle = planeAngle(zeno_head, zeno_level, zeno_level2, zeno_head, head);
+            angle=0.75f-(float)Math.cos(angle);
+
+            setPosition(neck_pitch, angle);
+            RobotPositionMap myCurrentPositions = myRobot.getCurrentPositions();
+            NormalizedDouble shoulder_pos = myCurrentPositions.get(right_shoulder_pitch);
+            //NormalizedDouble neck_pos = myCurrentPositions.get(neck_roll);
+            
+            //float neck = (float)neck_pos.getValue();
+            //float shoulder = (float)shoulder_pos.getValue();
+             //float shoulder_dir = speed*12.0f*(0.5f-shoulder);
+            //float neck_dir = (1.0f-speed)*12.0f*(0.5f-neck);
+            
+             
+             
+            setPosition(smile_left, 0.5f+speed*0.05f);
+            setPosition(smile_right, 0.5f+speed*0.05f);
+            
+            //setPosition(neck_roll, 1.0f-speed);
+            
+           // setPosition(brows, 0.5f+speed*0.2f);
+            //setPosition(eyelids, 0.5f+speed*0.5f);
+            //setPosition(right_shoulder_pitch, shoulder+shoulder_dir);
+            //setPosition(left_shoulder_pitch, shoulder+shoulder_dir);
+          //neck_vel = (1.0f-speed);
+          
+            //setPosition(neck_roll, neck+neck_vel);
+          
+              /* if (speed>0.7) {
+                mySpeaker.speak("whoopee");
+            }*/
+            /*if (speed>0.5 && timeSinceLastSpeak()>2000) {
+                int spText = 100+(int)((speed-0.5)*60);
+                mySpeaker.speak("\\VCT="+spText+"\\ oh");
+                lastSpeak = System.currentTimeMillis();
+            }*/
+            
+           
+            
+            
+            
+            
+           
+            
+        }
     }
     
     private void drawLimb(Graphics g, int x, int y, UserData user, JointType from, JointType to) {
