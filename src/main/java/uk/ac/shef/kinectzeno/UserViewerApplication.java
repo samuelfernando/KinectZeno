@@ -54,6 +54,7 @@ public class UserViewerApplication {
         mFrame.addWindowListener(new WindowAdapter() {
             public void windowClosing(WindowEvent e) {
                 mShouldRun = false;
+               
             }
         });
 
@@ -74,6 +75,7 @@ public class UserViewerApplication {
             }
         }
         mFrame.dispose();
+        System.exit(0);
     }
 
     public static void main(String s[]) {
